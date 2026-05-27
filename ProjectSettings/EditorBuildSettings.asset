@@ -6,6 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Tree/Scenes/TreeTest.unity
+    guid: ffb5b93b47f7f5e4781a65ffbb414d5b
+  - enabled: 1
+    path: Assets/Tree/Scenes/AfterTreeFall.unity
+    guid: 7f2a9c3e1d8b4f2a9e6c5d4b3a2910ef
+  - enabled: 1
     path: Assets/Scenes/Scena2.unity
     guid: 55daccc09a3b69647bbab145b54a3ab3
   m_configObjects:
