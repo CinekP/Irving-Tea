@@ -32,10 +32,10 @@ namespace VRChopping
         [SerializeField] private float maxGroundCorrection = 0.08f;
 
         [Header("Spin Control")]
-        [SerializeField] private float trunkAngularDragAfterBreak = 4f;
-        [SerializeField] private float topAngularDragAfterBreak = 3f;
-        [SerializeField] private float maxTrunkAngularSpeed = 4f;
-        [SerializeField] private float maxTopAngularSpeed = 6f;
+        [SerializeField] private float trunkAngularDragAfterBreak = 0.8f;
+        [SerializeField] private float topAngularDragAfterBreak = 0.6f;
+        [SerializeField] private float maxTrunkAngularSpeed = 12f;
+        [SerializeField] private float maxTopAngularSpeed = 15f;
 
         [Header("Scene Transition")]
         [SerializeField] private TreeFallSceneTransition sceneTransition;
@@ -136,9 +136,14 @@ namespace VRChopping
             _trunkRb.rotation = trunkRot;
             _trunkRb.linearVelocity = Vector3.zero;
             _trunkRb.angularVelocity = Vector3.zero;
+
+            // Prevent physics depenetration pop by temporarily lowering maxDepenetrationVelocity
+            _trunkRb.maxDepenetrationVelocity = 0.1f;
+            StartCoroutine(RestoreDepenetrationVelocityCoroutine(_trunkRb, 1.5f));
+
             _trunkRb.isKinematic = false;
             _trunkRb.useGravity = true;
-            _trunkRb.constraints = RigidbodyConstraints.None;
+            _trunkRb.constraints = RigidbodyConstraints.FreezeRotationY;
             _trunkRb.angularDamping = trunkAngularDragAfterBreak;
 
             if (_topRb != null)
@@ -147,6 +152,10 @@ namespace VRChopping
                 _topRb.rotation = topRot;
                 _topRb.linearVelocity = Vector3.zero;
                 _topRb.angularVelocity = Vector3.zero;
+
+                _topRb.maxDepenetrationVelocity = 0.1f;
+                StartCoroutine(RestoreDepenetrationVelocityCoroutine(_topRb, 1.5f));
+
                 _topRb.isKinematic = false;
                 _topRb.useGravity = true;
                 _topRb.constraints = RigidbodyConstraints.None;
@@ -154,9 +163,18 @@ namespace VRChopping
                 _topRb.WakeUp();
             }
 
-            NudgePartsAboveGroundIfNeeded();
+            // NudgePartsAboveGroundIfNeeded();
             ApplyBreakImpulse(hitPoint, hitDirection, hitSpeed, finalHitBoost);
             ScheduleSceneTransition();
+        }
+
+        private System.Collections.IEnumerator RestoreDepenetrationVelocityCoroutine(Rigidbody rb, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (rb != null)
+            {
+                rb.maxDepenetrationVelocity = Physics.defaultMaxDepenetrationVelocity;
+            }
         }
 
         private void ScheduleSceneTransition()
@@ -217,9 +235,8 @@ namespace VRChopping
                 targetRotation,
                 Mathf.Clamp01(tiltSmoothing * Time.fixedDeltaTime));
 
-            var worldTiltDelta = trunkPart.parent != null
-                ? trunkPart.parent.rotation * (smoothedRotation * Quaternion.Inverse(_initialTrunkLocalRotation))
-                : smoothedRotation * Quaternion.Inverse(_initialTrunkLocalRotation);
+            var localTilt = smoothedRotation * Quaternion.Inverse(_initialTrunkLocalRotation);
+            var worldTiltDelta = basePivot.rotation * localTilt * Quaternion.Inverse(basePivot.rotation);
 
             var fromPivot = _initialTrunkWorldPosition - basePivot.position;
             var tiltedPosition = basePivot.position + (worldTiltDelta * fromPivot);
@@ -238,14 +255,22 @@ namespace VRChopping
         private void ApplyBreakImpulse(Vector3 hitPoint, Vector3 hitDirection, float hitSpeed, float finalHitBoost)
         {
             var pushDirection = -hitDirection;
-            pushDirection.y = Mathf.Max(breakUpwardBoost, pushDirection.y);
+            // Limit upward boost to prevent the tree from lifting/jumping upwards
+            float effectiveUpwardBoost = Mathf.Min(0.02f, breakUpwardBoost);
+            pushDirection.y = Mathf.Max(effectiveUpwardBoost, pushDirection.y);
             if (pushDirection.sqrMagnitude < 0.0001f)
                 pushDirection = trunkPart.forward;
             pushDirection.Normalize();
 
             var boosted = Mathf.Max(1f, finalHitBoost) * Mathf.Max(1f, finalHitImpulseBoost);
             var trunkImpulse = Mathf.Max(minimumBreakImpulse, hitSpeed * breakImpulseMultiplier * _trunkRb.mass * 0.02f * boosted);
-            _trunkRb.AddForceAtPosition(pushDirection * trunkImpulse, hitPoint, ForceMode.Impulse);
+            _trunkRb.AddForce(pushDirection * trunkImpulse, ForceMode.Impulse);
+            
+            var torqueAxis = Vector3.Cross(trunkPart.up, pushDirection);
+            if (torqueAxis.sqrMagnitude > 0.0001f)
+            {
+                _trunkRb.AddTorque(torqueAxis.normalized * (trunkImpulse * 1.2f), ForceMode.Impulse);
+            }
 
             if (_topRb != null)
             {
@@ -270,14 +295,34 @@ namespace VRChopping
 
         private void ClampPostBreakSpin()
         {
-            if (_trunkRb != null && _trunkRb.angularVelocity.magnitude > maxTrunkAngularSpeed)
+            if (_trunkRb != null)
             {
-                _trunkRb.angularVelocity = _trunkRb.angularVelocity.normalized * maxTrunkAngularSpeed;
+                if (trunkPart != null)
+                {
+                    Vector3 localUp = trunkPart.up;
+                    float spinSpeed = Vector3.Dot(_trunkRb.angularVelocity, localUp);
+                    _trunkRb.angularVelocity -= localUp * spinSpeed;
+                }
+
+                if (_trunkRb.angularVelocity.magnitude > maxTrunkAngularSpeed)
+                {
+                    _trunkRb.angularVelocity = _trunkRb.angularVelocity.normalized * maxTrunkAngularSpeed;
+                }
             }
 
-            if (_topRb != null && _topRb.angularVelocity.magnitude > maxTopAngularSpeed)
+            if (_topRb != null)
             {
-                _topRb.angularVelocity = _topRb.angularVelocity.normalized * maxTopAngularSpeed;
+                if (topPart != null)
+                {
+                    Vector3 localUp = topPart.up;
+                    float spinSpeed = Vector3.Dot(_topRb.angularVelocity, localUp);
+                    _topRb.angularVelocity -= localUp * spinSpeed;
+                }
+
+                if (_topRb.angularVelocity.magnitude > maxTopAngularSpeed)
+                {
+                    _topRb.angularVelocity = _topRb.angularVelocity.normalized * maxTopAngularSpeed;
+                }
             }
         }
 
@@ -352,11 +397,10 @@ namespace VRChopping
 
             if (trunkPart != transform)
             {
-                rootRb.isKinematic = true;
-                rootRb.useGravity = false;
-                rootRb.linearVelocity = Vector3.zero;
-                rootRb.angularVelocity = Vector3.zero;
-                rootRb.constraints = RigidbodyConstraints.FreezeAll;
+                if (Application.isPlaying)
+                    Destroy(rootRb);
+                else
+                    DestroyImmediate(rootRb);
             }
         }
 
@@ -374,7 +418,14 @@ namespace VRChopping
             for (var i = 0; i < colliders.Length; i++)
             {
                 if (colliders[i] != null)
+                {
                     colliders[i].isTrigger = false;
+
+                    if (colliders[i] is MeshCollider meshCollider)
+                    {
+                        meshCollider.convex = true;
+                    }
+                }
             }
         }
 

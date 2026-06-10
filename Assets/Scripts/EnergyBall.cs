@@ -10,9 +10,11 @@ public class EnergyBall : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag(treeTag))
+        bool isTree = other.CompareTag(treeTag) || 
+                      (other.transform.parent != null && other.transform.parent.CompareTag(treeTag));
+        if (isTree)
         {
-            GrowingTree tree = other.GetComponent<GrowingTree>();
+            GrowingTree tree = other.GetComponentInParent<GrowingTree>();
             if (tree != null && !tree.IsGrown)
             {
                 tree.StartGrowth();

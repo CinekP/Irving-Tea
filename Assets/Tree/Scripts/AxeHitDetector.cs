@@ -33,6 +33,11 @@ namespace VRChopping
         [SerializeField] private float heavyHapticAmplitude = 0.7f;
         [SerializeField] private float hapticDuration = 0.05f;
 
+        [Header("Audio")]
+        [SerializeField] private AudioClip[] hitClips;
+        [SerializeField] private float minHitVolume = 0.4f;
+        [SerializeField] private float maxHitVolume = 0.9f;
+
         private Rigidbody _rigidbody;
         private XRGrabInteractable _grabInteractable;
         private IXRInteractor _currentInteractor;
@@ -43,11 +48,13 @@ namespace VRChopping
         private float _originalDrag;
         private float _originalAngularDrag;
         private readonly HashSet<Collider> _validHitColliders = new HashSet<Collider>();
+        private AudioSource _audioSource;
 
         private void Awake()
         {
             _rigidbody = GetComponent<Rigidbody>();
             _grabInteractable = GetComponent<XRGrabInteractable>();
+            _audioSource = GetComponent<AudioSource>();
             _rigidbody.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             _rigidbody.interpolation = RigidbodyInterpolation.Interpolate;
             _lastPosition = transform.position;
@@ -124,7 +131,8 @@ namespace VRChopping
             if (Time.time - _lastHitTime < cooldownBetweenHits)
                 return;
 
-            if (!targetCollider.CompareTag(treeTag))
+            var treeHealth = targetCollider.GetComponentInParent<TreeHealth>();
+            if (treeHealth == null)
                 return;
 
             var speed = GetHitSpeed();
@@ -132,11 +140,9 @@ namespace VRChopping
                 return;
 
             var hitDirection = -hitNormal;
-            var treeHealth = targetCollider.GetComponentInParent<TreeHealth>();
-            if (treeHealth != null)
-            {
-                treeHealth.ApplyHit(hitPoint, hitDirection, speed);
-            }
+            treeHealth.ApplyHit(hitPoint, hitDirection, speed);
+
+            PlayHitSound(speed);
 
             ApplyResistance(hitNormal, speed);
             SendHitHaptics(speed);
@@ -146,6 +152,20 @@ namespace VRChopping
         private float GetHitSpeed()
         {
             return Mathf.Max(_rigidbody.linearVelocity.magnitude, _trackedSwingSpeed);
+        }
+
+        private void PlayHitSound(float speed)
+        {
+            if (_audioSource != null && hitClips != null && hitClips.Length > 0)
+            {
+                var clip = hitClips[Random.Range(0, hitClips.Length)];
+                if (clip != null)
+                {
+                    _audioSource.pitch = Random.Range(0.85f, 1.15f);
+                    float volume = Mathf.Lerp(minHitVolume, maxHitVolume, Mathf.InverseLerp(minHitSpeed, minHitSpeed * 2.5f, speed));
+                    _audioSource.PlayOneShot(clip, volume);
+                }
+            }
         }
 
         private void ApplyResistance(Vector3 surfaceNormal, float speed)
