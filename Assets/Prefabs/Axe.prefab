@@ -388,9 +388,7 @@ MonoBehaviour:
   heavyHapticAmplitude: 0.7
   hapticDuration: 0.05
   hitClips:
-  - {fileID: 8300000, guid: 0db84d4d7bb687d4eaa72bcfadce4fee, type: 3}
-  - {fileID: 8300000, guid: c6fef955e209a6343a807ac8b0e5990e, type: 3}
-  - {fileID: 8300000, guid: 205e8a6050647f840a1ce1c39e858037, type: 3}
+  - {fileID: 8300000, guid: 3e973cf3197b18443aacbfa3267e0b21, type: 3}
   minHitVolume: 0.4
   maxHitVolume: 0.9
 --- !u!114 &258481589269105446

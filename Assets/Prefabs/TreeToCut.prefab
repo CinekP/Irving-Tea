@@ -121,6 +121,8 @@ MonoBehaviour:
   maxTrunkAngularSpeed: 12
   maxTopAngularSpeed: 15
   sceneTransition: {fileID: 1838576306262012717}
+  fallClip: {fileID: 8300000, guid: 7deb473d74a7a35459234d15c861bcec, type: 3}
+  fallVolume: 0.9
 --- !u!114 &1838576306262012717
 MonoBehaviour:
   m_ObjectHideFlags: 0

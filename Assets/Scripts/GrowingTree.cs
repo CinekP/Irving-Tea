@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using System.Collections;
 
@@ -7,7 +8,9 @@ public class GrowingTree : MonoBehaviour
     public GameObject smallTreeVisual;
     public GameObject largeTreeVisual;
     public float growthDuration = 2f;
-    public AnimationCurve growthCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    [Min(0.01f)]
+    public float maxGrowthScale = 5f;
+    public AnimationCurve growthCurve = AnimationCurve.EaseInOut(0, 0f, 1, 1f);
 
     [Header("Effects")]
     public ParticleSystem growthParticles;
@@ -15,6 +18,7 @@ public class GrowingTree : MonoBehaviour
 
     private bool isGrown = false;
     public bool IsGrown => isGrown;
+    public event Action TreeGrown;
 
     private void Start()
     {
@@ -32,6 +36,7 @@ public class GrowingTree : MonoBehaviour
     private IEnumerator GrowthRoutine()
     {
         isGrown = true;
+        TreeGrown?.Invoke();
         Debug.Log("GrowthRoutine started");
 
         if (growthParticles != null) growthParticles.Play();
@@ -39,56 +44,81 @@ public class GrowingTree : MonoBehaviour
 
         if (smallTreeVisual != null && largeTreeVisual != null)
         {
-            // 1. Calculate the FLOOR position based on the SMALL tree
-            // We assume the small tree is already sitting correctly on the ground.
-            Vector3 smallWorldPos = smallTreeVisual.transform.position;
-            Vector3 smallWorldScale = smallTreeVisual.transform.lossyScale;
-            float floorY = smallWorldPos.y - (smallWorldScale.y * 0.5f);
-            
-            // 2. Prepare the LARGE tree
-            largeTreeVisual.SetActive(true);
-            foreach (Transform child in largeTreeVisual.transform) child.gameObject.SetActive(true);
-            
-            Vector3 finalLocalScale = largeTreeVisual.transform.localScale;
-            Vector3 finalWorldPos = largeTreeVisual.transform.position; // Keep original X/Z
+            var anchorLocalPosition = smallTreeVisual.transform.localPosition;
+            var anchorLocalRotation = smallTreeVisual.transform.localRotation;
+            var anchorWorldPosition = smallTreeVisual.transform.position;
+            var floorY = GetVisualBottomY(smallTreeVisual);
 
-            // Deactivate small tree now that we have its ground position
+            largeTreeVisual.SetActive(true);
+            foreach (Transform child in largeTreeVisual.transform)
+                child.gameObject.SetActive(true);
+
+            largeTreeVisual.transform.localPosition = anchorLocalPosition;
+            largeTreeVisual.transform.localRotation = anchorLocalRotation;
+
+            var baseLocalScale = largeTreeVisual.transform.localScale;
+            var smallHeight = GetVisualHeight(smallTreeVisual);
+
+            largeTreeVisual.transform.localScale = baseLocalScale;
+            SnapVisualToAnchor(largeTreeVisual, anchorWorldPosition, floorY);
+
+            var largeHeightAtBaseScale = GetVisualHeight(largeTreeVisual);
+            var startScaleMultiplier = largeHeightAtBaseScale > 0.001f
+                ? smallHeight / largeHeightAtBaseScale
+                : 0.25f;
+            var endScaleMultiplier = maxGrowthScale;
+
             smallTreeVisual.SetActive(false);
 
-            // 3. Setup the growth loop
             float elapsed = 0f;
             while (elapsed < growthDuration)
             {
                 elapsed += Time.deltaTime;
-                float t = growthCurve.Evaluate(elapsed / growthDuration);
-                
-                // Scale proportionally
-                largeTreeVisual.transform.localScale = finalLocalScale * t;
+                var progress = growthCurve.Evaluate(Mathf.Clamp01(elapsed / growthDuration));
+                var scaleMultiplier = Mathf.Lerp(startScaleMultiplier, endScaleMultiplier, progress);
 
-                // Position so the bottom stays at the small tree's floorY
-                float currentWorldHeight = largeTreeVisual.transform.lossyScale.y;
-                float newWorldY = floorY + (currentWorldHeight * 0.5f);
-                
-                largeTreeVisual.transform.position = new Vector3(
-                    finalWorldPos.x,
-                    newWorldY,
-                    finalWorldPos.z
-                );
-                
+                largeTreeVisual.transform.localScale = baseLocalScale * scaleMultiplier;
+                SnapVisualToAnchor(largeTreeVisual, anchorWorldPosition, floorY);
+
                 yield return null;
             }
 
-            // 4. Final Snap
-            float endT = growthCurve.Evaluate(1f);
-            largeTreeVisual.transform.localScale = finalLocalScale * endT;
-            float finalHeight = largeTreeVisual.transform.lossyScale.y;
-            largeTreeVisual.transform.position = new Vector3(
-                finalWorldPos.x,
-                floorY + (finalHeight * 0.5f),
-                finalWorldPos.z
-            );
-            
+            largeTreeVisual.transform.localScale = baseLocalScale * endScaleMultiplier;
+            SnapVisualToAnchor(largeTreeVisual, anchorWorldPosition, floorY);
+
             Debug.Log("Large tree growth finished using small tree base");
         }
+    }
+
+    private static float GetVisualBottomY(GameObject visual)
+    {
+        var renderer = visual.GetComponentInChildren<Renderer>();
+        return renderer != null ? renderer.bounds.min.y : visual.transform.position.y;
+    }
+
+    private static float GetVisualHeight(GameObject visual)
+    {
+        var renderer = visual.GetComponentInChildren<Renderer>();
+        return renderer != null ? renderer.bounds.size.y : 0f;
+    }
+
+    private static void SnapVisualToAnchor(GameObject visual, Vector3 anchorWorldPosition, float floorY)
+    {
+        var renderer = visual.GetComponentInChildren<Renderer>();
+        if (renderer == null)
+        {
+            visual.transform.position = new Vector3(
+                anchorWorldPosition.x,
+                anchorWorldPosition.y,
+                anchorWorldPosition.z);
+            return;
+        }
+
+        var deltaY = floorY - renderer.bounds.min.y;
+        var position = visual.transform.position;
+        visual.transform.position = new Vector3(
+            anchorWorldPosition.x,
+            position.y + deltaY,
+            anchorWorldPosition.z);
     }
 }

@@ -40,6 +40,10 @@ namespace VRChopping
         [Header("Scene Transition")]
         [SerializeField] private TreeFallSceneTransition sceneTransition;
 
+        [Header("Audio")]
+        [SerializeField] private AudioClip fallClip;
+        [SerializeField, Range(0f, 1f)] private float fallVolume = 0.9f;
+
         private Rigidbody _trunkRb;
         private Rigidbody _topRb;
         private bool _isBroken;
@@ -117,6 +121,8 @@ namespace VRChopping
             ApplyCurrentTilt();
             _isBroken = true;
 
+            PlayFallSound(trunkPart != null ? trunkPart.position : transform.position);
+
             var trunkPos = trunkPart.position;
             var trunkRot = trunkPart.rotation;
             var topPos = topPart != null ? topPart.position : Vector3.zero;
@@ -183,6 +189,14 @@ namespace VRChopping
                 sceneTransition = GetComponent<TreeFallSceneTransition>();
 
             sceneTransition?.ScheduleTransitionAfterFall();
+        }
+
+        private void PlayFallSound(Vector3 position)
+        {
+            if (fallClip == null)
+                return;
+
+            AudioSource.PlayClipAtPoint(fallClip, position, fallVolume);
         }
 
         private void AutoAssignParts()
